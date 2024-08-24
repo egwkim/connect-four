@@ -86,7 +86,7 @@ class ConnectFourBoard:
         # evaluation
         # 0: draw, 1: 1 wins, 2: 2 wins
         if depth == 0:
-            return 0, -1
+            return -1, 0
 
         best_eval = 3 - self.turn
         best_move = -1
@@ -95,6 +95,7 @@ class ConnectFourBoard:
 
         for i in range(7):
             if not self.move(i):
+                print(i, 'cannot move here')
                 continue
 
             if self.finished:
@@ -107,7 +108,10 @@ class ConnectFourBoard:
                     self.undo(i)
                     return i, 0
 
-            eval, _ = self.best_move(depth - 1)
+            _, eval = self.best_move(depth - 1)
+
+            if depth==5:
+                print(i, eval)
 
             # self.turn is switched here
             if eval == 3 - self.turn:
@@ -131,6 +135,7 @@ class ConnectFourBoard:
         if best_eval != self.turn:
             if not candidates:
                 print(self)
+                print(depth)
                 print(best_move, best_eval)
 
             best_move = random.choice(candidates)
@@ -228,8 +233,8 @@ class ConnectFourBoard:
 
 
 def main():
-    # gui()
-    cli()
+    gui()
+    # cli()
 
 
 def cli():
@@ -351,7 +356,7 @@ def gui():
             board.draw(window, selected)
             pygame.display.flip()
 
-            if players == 1 and player_turn != board.turn:
+            if players == 1 and player_turn != board.turn and not board.finished:
                 board.move(board.best_move()[0])
 
             clock.tick(FPS)
