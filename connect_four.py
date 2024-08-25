@@ -307,7 +307,7 @@ def gui():
             for event in events:
                 if event.type == pygame.QUIT:
                     pygame.quit()
-                    return
+                    return False
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.pos[0] < WINDOW_WIDTH / 2:
                         return 1
@@ -353,6 +353,10 @@ def gui():
             clock.tick(FPS)
 
     players = menu()
+    if not players:
+        # Quit event occured, exit program
+        return
+
     game(players)
 
 
