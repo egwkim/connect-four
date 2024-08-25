@@ -39,52 +39,107 @@ FONT = pygame.font.SysFont(None, 64)
 
 class ConnectFourBoard:
     def __init__(self, width=7, height=6):
+        # Doesn't change after init
         self.width = width
         self.height = height
-        self.board = [[0 for x in range(width)] for y in range(height)]
-        self.turn = 1
-        self.ply = 0
-        self.finished = False
-        self.winner = 0
+        self.cells = self.width * self.height
         self.symbols = ['.', 'O', 'X']
+        self.max_depth = 8
+
+        # Can change during the game
+        self.current = 0
+        self.all = 0
+        self.turn = 1
+
+        # Cache to reduce calculation
+        # key: (current, all), value: evaluation
+        self.cache = {}
+
+        # Set after game ends
+        # 0: not finished, 1: first wins, 2: last wins, 3: draw
+        self.finished = 0
+
+    def highest_blank(self, column):
+        """
+        Return the highest blank cell in the column
+        If the column is full, return None
+        """
+        if (self.all >> ((self.width + 1) * (self.height) - column - 2)) & 1:
+            return None
+
+        # Lowest cell on the column
+        cell = 1 << self.width - (column + 1)
+        # Search one cell above until the cell is empty
+        while self.all & cell:
+            cell <<= self.width + 1
+
+        return cell
 
     def move(self, column):
+        """
+        Make a move on the board
+
+        0 <= column < board width
+
+        Return False on fail.
+        Return an integer (2**n) representing the move on success.
+        """
+
+        # 0 <= column < self.width
         if self.finished:
-            return False
-        if column < 0 or column >= self.width:
-            return False
-        if self.board[0][column] != 0:
+            # Game already finished
             return False
 
-        for row in range(self.height - 1, -1, -1):
-            if self.board[row][column] == 0:
-                self.board[row][column] = self.turn
-                break
-        self.ply += 1
+        selected = self.highest_blank(column)
+
+        if selected is None:
+            # Selected column is full
+            return False
+
+        # Make a move to the board
+        self.all += selected
+        self.current += selected
+
+        # Check if the game is finished
+        if self.check_win():
+            self.finished = self.turn
+        elif self.all.bit_count() == self.cells:
+            self.finished = 3
+
+        # Switch turn
         self.turn = 3 - self.turn
+        self.current ^= self.all
 
-        self.finished = self.ply >= self.width * self.height or self.check_win()
-        return True
+        return selected
 
-    def undo(self, column):
-        for row in range(self.height):
-            if self.board[row][column] == 0:
-                continue
-            elif self.board[row][column] == self.turn:
-                raise ValueError('Cannot undo opponent\'s piece')
-            else:
-                self.board[row][column] = 0
-                self.ply -= 1
-                self.turn = 3 - self.turn
-                self.finished = False
-                break
-        else:
-            raise ValueError('Cannot undo empty column')
+    def undo(self, cell):
+        if not self.all & cell:
+            raise ValueError('Cannot undo empty cell')
+        if self.current & cell:
+            raise ValueError('Cannot undo opponent\'s piece')
 
-    def best_move(self, depth=5):
-        # return: (move, evaluation)
-        # evaluation
-        # 0: draw, 1: 1 wins, 2: 2 wins
+        self.all -= cell
+        self.current ^= self.all
+        self.turn = 3 - self.turn
+        self.finished = False
+
+    def best_move(self, depth=None):
+        """
+        Calculate the best move of the current position
+
+        evaluation
+        0: draw, 1: 1 wins, 2: 2 wins
+
+        Return: (move, evaluation)
+        """
+        # TODO Fix best move algorithm
+        if depth is None:
+            depth = self.max_depth
+            self.cache = {}
+
+        if (self.current, self.all) in self.cache:
+            return -1, self.cache[(self.current, self.all)]
+
         if depth == 0:
             return -1, 0
 
@@ -94,18 +149,18 @@ class ConnectFourBoard:
         candidates = []
 
         for i in range(7):
-            if not self.move(i):
+            m = self.move(i)
+            if not m:
                 continue
 
-            if self.finished:
-                if self.check_win():
-                    # return won player
-                    self.undo(i)
-                    return i, self.turn
-                else:
-                    # board full, draw
-                    self.undo(i)
-                    return i, 0
+            if self.finished == 3:
+                # board full, draw
+                self.undo(m)
+                return i, 0
+            elif self.finished:
+                # return won player
+                self.undo(m)
+                return i, self.turn
 
             _, eval = self.best_move(depth - 1)
 
@@ -114,91 +169,84 @@ class ConnectFourBoard:
                 # winning move
                 best_eval = eval
                 best_move = i
-                self.undo(i)
+                self.undo(m)
                 break
 
-            if best_eval == eval:
+            if depth == self.max_depth and best_eval == eval:
                 candidates.append(i)
 
             elif best_eval == self.turn and eval == 0:
                 best_eval = eval
-                best_move = i
                 candidates = [i]
 
             # restore board
-            self.undo(i)
+            self.undo(m)
 
-        if best_eval != self.turn:
+        if depth == self.max_depth and best_eval != self.turn:
+            # By not showing the engine line,
+            # best_move is not significant during the calculation.
             best_move = random.choice(candidates)
+
+        self.cache[(self.current, self.all)] = (best_move, best_eval)
+
         return best_move, best_eval
 
     def check_win(self):
-        for row in range(self.height):
-            for column in range(self.width):
-                if self.board[row][column] != 0:
-                    if (
-                        self.check_horizontal(row, column)
-                        or self.check_vertical(row, column)
-                        or self.check_diagonal1(row, column)
-                        or self.check_diagonal2(row, column)
-                    ):
-                        self.winner = self.board[row][column]
-                        return True
-        return False
+        # Return true if the current player has won
+        c = self.current
 
-    def check_horizontal(self, row, column):
-        for i in range(4):
-            if (
-                column + i >= self.width
-                or self.board[row][column + i] != self.board[row][column]
-            ):
-                return False
-        return True
+        # Check if there are two stones in a row
+        # and then check if there are two "two in a row" in a row
+        x = c & (c >> 1)
+        h = x & (x >> 2)
 
-    def check_vertical(self, row, column):
-        for i in range(4):
-            if (
-                row + i >= self.height
-                or self.board[row + i][column] != self.board[row][column]
-            ):
-                return False
-        return True
+        x = c & (c >> self.width + 1)
+        v = x & (x << 2 * (self.width + 1))
 
-    def check_diagonal1(self, row, column):
-        for i in range(4):
-            if (
-                row + i >= self.height
-                or column + i >= self.width
-                or self.board[row + i][column + i] != self.board[row][column]
-            ):
-                return False
-        return True
+        x = c & (c >> self.width)
+        d1 = x & (x << 2 * (self.width))
 
-    def check_diagonal2(self, row, column):
-        for i in range(4):
-            if (
-                row + i >= self.height
-                or column - i < 0
-                or self.board[row + i][column - i] != self.board[row][column]
-            ):
-                return False
-        return True
+        x = c & c >> self.width + 2
+        d2 = x & (x << 2 * (self.width + 2))
+        return h or v or d1 or d2
 
     def __str__(self):
         s = ""
-        for row in self.board:
-            for cell in row:
-                s += self.symbols[cell]
-            s += "\n"
+        last = self.current
+        if self.turn == 1:
+            last ^= self.all
+        all = self.all
+        for row in range(self.height):
+            for cell in range(self.width):
+                s = self.symbols[(last & 1) + (all & 1)] + s
+                last >>= 1
+                all >>= 1
+            s = "\n" + s
+            last >>= 1
+            all >>= 1
         return s
 
     def draw(self, window, highlight=None):
         window.fill(COLOR['BLUE'])
-        for i, j in itertools.product(range(BOARD_WIDTH), range(BOARD_HEIGHT)):
-            window.blit(
-                CIRCLES[self.board[j][i]],
-                (CELL_SIZE * i, CELL_SIZE * j),
-            )
+        last = self.current
+        if self.turn == 1:
+            last ^= self.all
+        all = self.all
+
+        y = self.height - 1
+        for row in range(self.height):
+            x = self.width - 1
+            for cell in range(self.width):
+                window.blit(
+                    CIRCLES[(last & 1) + (all & 1)],
+                    (CELL_SIZE * x, CELL_SIZE * y),
+                )
+                x -= 1
+                last >>= 1
+                all >>= 1
+            y -= 1
+            last >>= 1
+            all >>= 1
 
         if self.finished:
             text = FONT.render('GAME OVER', True, COLOR['BLACK'])
@@ -208,17 +256,18 @@ class ConnectFourBoard:
 
         elif highlight != None:
             # don't highlight if column is full
-            if self.board[0][highlight]:
+            cell = self.highest_blank(highlight)
+            if cell is None:
                 return
 
-            # find lowest blank cell in highlighted column
-            for i in range(self.height - 1, -1, -1):
-                if self.board[i][highlight] == 0:
-                    break
+            cell_idx = cell.bit_length() - 1
+            x = self.width - 1 - cell_idx % (self.width + 1)
+            y = self.height - 1 - cell_idx // (self.width + 1)
+
             CIRCLES[self.turn].set_alpha(64)
             window.blit(
                 CIRCLES[self.turn],
-                (CELL_SIZE * highlight, CELL_SIZE * i),
+                (CELL_SIZE * x, CELL_SIZE * y),
             )
             CIRCLES[self.turn].set_alpha(255)
 
@@ -237,14 +286,17 @@ def cli():
                 break
         elif mode == '2':
             break
+
+    board = ConnectFourBoard(BOARD_WIDTH, BOARD_HEIGHT)
     if mode == '1':
-        board = ConnectFourBoard(BOARD_WIDTH, BOARD_HEIGHT)
         if turn == 2:
             print(board)
             board.move(board.best_move()[0])
         while True:
             print(board)
-            move = int(input("Input move (0-6): "))
+            move = -1
+            while not (0 <= move < board.width):
+                move = int(input("Input move (0-6): "))
             board.move(move)
             if board.finished:
                 print(board)
@@ -256,7 +308,6 @@ def cli():
                 break
 
     else:
-        board = ConnectFourBoard(BOARD_WIDTH, BOARD_HEIGHT)
         while True:
             print(board)
             move = int(input("Input move (0-6): "))
@@ -348,7 +399,8 @@ def gui():
             pygame.display.flip()
 
             if players == 1 and player_turn != board.turn and not board.finished:
-                board.move(board.best_move()[0])
+                m, e = board.best_move()
+                board.move(m)
 
             clock.tick(FPS)
 
