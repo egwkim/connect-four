@@ -95,7 +95,6 @@ class ConnectFourBoard:
 
         for i in range(7):
             if not self.move(i):
-                print(i, 'cannot move here')
                 continue
 
             if self.finished:
@@ -109,9 +108,6 @@ class ConnectFourBoard:
                     return i, 0
 
             _, eval = self.best_move(depth - 1)
-
-            if depth==5:
-                print(i, eval)
 
             # self.turn is switched here
             if eval == 3 - self.turn:
@@ -133,11 +129,6 @@ class ConnectFourBoard:
             self.undo(i)
 
         if best_eval != self.turn:
-            if not candidates:
-                print(self)
-                print(depth)
-                print(best_move, best_eval)
-
             best_move = random.choice(candidates)
         return best_move, best_eval
 
