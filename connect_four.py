@@ -112,7 +112,7 @@ class ConnectFourBoard:
             self.winner = 0
 
         # Switch turn
-        self.turn -= self.turn
+        self.turn *= -1
         self.current ^= self.all
 
         return selected
@@ -125,20 +125,64 @@ class ConnectFourBoard:
 
         self.all -= cell
         self.current ^= self.all
-        self.turn -= self.turn
+        self.turn *= -1
         self.finished = False
+        self.winner = 0
 
     def best_move(self, depth=0):
         """
         Calculate the best move of the current position
 
-        evaluation
-        0: draw, 1: 1 wins, 2: 2 wins
+        evaluation range: [-1, 1]
+        0: draw, positive: first wins, negative: last wins
 
         Return: (move, evaluation)
         """
         if depth == self.max_depth:
-            return -1, 0
+            return None, 0
+
+        if depth == 0:
+            self.cache = {}
+
+        if (self.current, self.all) in self.cache:
+            return None, self.cache[(self.current, self.all)]
+
+        sgn = self.turn
+
+        best_eval = -sgn * 2
+        best_move = None
+        candidates = []
+
+        for i in range(7):
+            m = self.move(i)
+            if not m:
+                continue
+
+            if self.finished:
+                result = self.winner / (depth + 1)
+                self.undo(m)
+                self.cache[(self.current, self.all)] = result
+                return i, result
+
+            _, eval = self.best_move(depth + 1)
+
+            if depth == 0:
+                print(i, eval)
+                if eval * sgn > best_eval * sgn:
+                    candidates = [i]
+                    best_eval = eval
+                elif eval == best_eval:
+                    candidates.append(i)
+            elif eval * sgn > best_eval * sgn:
+                best_eval = eval
+
+            self.undo(m)
+
+        self.cache[(self.current, self.all)] = best_eval
+        if depth == 0:
+            print(candidates)
+            return random.choice(candidates), best_eval
+        return best_move, best_eval
 
     def check_win(self):
         # Return true if the current player has won
