@@ -129,7 +129,7 @@ class ConnectFourBoard:
         self.finished = False
         self.winner = 0
 
-    def best_move(self, depth=0):
+    def best_move(self, depth=0, alpha=-2, beta=2):
         """
         Calculate the best move of the current position
 
@@ -138,6 +138,8 @@ class ConnectFourBoard:
 
         Return: (move, evaluation)
         """
+        # TODO Add simple huristic function when reaching max depth
+
         if depth == self.max_depth:
             return None, 0
 
@@ -164,7 +166,20 @@ class ConnectFourBoard:
                 self.cache[(self.current, self.all)] = result
                 return i, result
 
-            _, eval = self.best_move(depth + 1)
+            _, eval = self.best_move(depth + 1, alpha, beta)
+
+            # Alpha beta pruning
+            # Don't cache eval when pruning nodes
+            if sgn == 1:
+                if eval > beta:
+                    self.undo(m)
+                    return i, eval
+                alpha = max(eval, alpha)
+            else:
+                if eval < alpha:
+                    self.undo(m)
+                    return i, eval
+                beta = min(eval, beta)
 
             if depth == 0:
                 print(i, eval)
