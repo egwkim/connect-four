@@ -49,6 +49,7 @@ class ConnectFourBoard:
         # Can change during the game
         self.current = 0
         self.all = 0
+        # turn = 1: first, -1: last
         self.turn = 1
 
         # Cache to reduce calculation
@@ -56,8 +57,8 @@ class ConnectFourBoard:
         self.cache = {}
 
         # Set after game ends
-        # 0: not finished, 1: first wins, 2: last wins, 3: draw
         self.finished = 0
+        self.winner = 0
 
     def highest_blank(self, column):
         """
@@ -102,12 +103,16 @@ class ConnectFourBoard:
 
         # Check if the game is finished
         if self.check_win():
-            self.finished = self.turn
+            # game finished with winner
+            self.finished = True
+            self.winner = self.turn
         elif self.all.bit_count() == self.cells:
-            self.finished = 3
+            # draw
+            self.finished = True
+            self.winner = 0
 
         # Switch turn
-        self.turn = 3 - self.turn
+        self.turn -= self.turn
         self.current ^= self.all
 
         return selected
@@ -120,10 +125,10 @@ class ConnectFourBoard:
 
         self.all -= cell
         self.current ^= self.all
-        self.turn = 3 - self.turn
+        self.turn -= self.turn
         self.finished = False
 
-    def best_move(self, depth=None):
+    def best_move(self, depth=0):
         """
         Calculate the best move of the current position
 
@@ -132,64 +137,8 @@ class ConnectFourBoard:
 
         Return: (move, evaluation)
         """
-        # TODO Fix best move algorithm
-        if depth is None:
-            depth = self.max_depth
-            self.cache = {}
-
-        if (self.current, self.all) in self.cache:
-            return -1, self.cache[(self.current, self.all)]
-
-        if depth == 0:
+        if depth == self.max_depth:
             return -1, 0
-
-        best_eval = 3 - self.turn
-        best_move = -1
-
-        candidates = []
-
-        for i in range(7):
-            m = self.move(i)
-            if not m:
-                continue
-
-            if self.finished == 3:
-                # board full, draw
-                self.undo(m)
-                return i, 0
-            elif self.finished:
-                # return won player
-                self.undo(m)
-                return i, self.turn
-
-            _, eval = self.best_move(depth - 1)
-
-            # self.turn is switched here
-            if eval == 3 - self.turn:
-                # winning move
-                best_eval = eval
-                best_move = i
-                self.undo(m)
-                break
-
-            if depth == self.max_depth and best_eval == eval:
-                candidates.append(i)
-
-            elif best_eval == self.turn and eval == 0:
-                best_eval = eval
-                candidates = [i]
-
-            # restore board
-            self.undo(m)
-
-        if depth == self.max_depth and best_eval != self.turn:
-            # By not showing the engine line,
-            # best_move is not significant during the calculation.
-            best_move = random.choice(candidates)
-
-        self.cache[(self.current, self.all)] = (best_move, best_eval)
-
-        return best_move, best_eval
 
     def check_win(self):
         # Return true if the current player has won
@@ -281,15 +230,15 @@ def cli():
     while True:
         mode = input('Number of players (1 or 2): ')
         if mode == '1':
-            turn = int(input('Select turn (1 or 2): '))
-            if turn == 1 or turn == 2:
+            turn = int(input('Select turn (1 or -1): '))
+            if turn == 1 or turn == -1:
                 break
         elif mode == '2':
             break
 
     board = ConnectFourBoard(BOARD_WIDTH, BOARD_HEIGHT)
     if mode == '1':
-        if turn == 2:
+        if turn == -1:
             print(board)
             board.move(board.best_move()[0])
         while True:
@@ -372,7 +321,7 @@ def gui():
 
     def game(players=2):
         if players == 1:
-            player_turn = random.randint(1, 2)
+            player_turn = random.choice((1, -1))
         prev_time = time.time()
 
         selected = None
