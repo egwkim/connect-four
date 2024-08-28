@@ -1,6 +1,9 @@
-import pygame
 import random
 import time
+
+from types import GeneratorType
+
+import pygame
 
 pygame.init()
 
@@ -35,15 +38,64 @@ FPS = 60
 
 FONT = pygame.font.SysFont(None, 64)
 
+BATCH = int(1e4)
+
+LOG = True
+
+
+def log(*args, **kwargs):
+    if LOG:
+        print(*args, **kwargs)
+
+
+def quit():
+    # pygame.quit()
+    raise
+
+
+def bootstrap(f, stack=[]):
+    def wrappedfunc(*args, **kwargs):
+        if stack:
+            return f(*args, **kwargs)
+        else:
+            to = f(*args, **kwargs)
+            while True:
+                events = pygame.event.get()
+                for event in events:
+                    if event.type == pygame.QUIT:
+                        quit()
+                        return False
+                for _ in range(BATCH):
+                    if type(to) is GeneratorType:
+                        stack.append(to)
+                        to = next(to)
+                    else:
+                        stack.pop()
+                        if not stack:
+                            break
+                        to = stack[-1].send(to)
+                else:
+                    continue
+                break
+        return to
+
+    return wrappedfunc
+
 
 class ConnectFourBoard:
     def __init__(self, width=7, height=6):
         # Doesn't change after init
         self.width = width
         self.height = height
-        self.cells = self.width * self.height
+        self.cells = width * height
         self.symbols = ['.', 'O', 'X']
-        self.max_depth = 8
+        self.max_depth = 9
+        self.full = 0
+        tmp = (1 << width) - 1
+        for _ in range(height):
+            self.full <<= width + 1
+            self.full += tmp
+        self.full_fours = 4 * width * height - 9 * (width + height) + 18
 
         # Can change during the game
         self.current = 0
@@ -128,31 +180,59 @@ class ConnectFourBoard:
         self.finished = False
         self.winner = 0
 
-    def best_move(self, depth=0, alpha=-2, beta=2):
+    def heuristic(self):
+        # Heuristic function is not consistence
+        # Only meaningful to compare positions
+        # with same depth starting from same position
+        def count_fours(c):
+            x = c & (c >> 1)
+            h = x & (x >> 2)
+
+            x = c & (c >> self.width + 1)
+            v = x & (x << 2 * (self.width + 1))
+
+            x = c & (c >> self.width)
+            d1 = x & (x << 2 * (self.width))
+
+            x = c & c >> self.width + 2
+            d2 = x & (x << 2 * (self.width + 2))
+            return sum(map(lambda x: x.bit_count(), (h, v, d1, d2)))
+
+        # Opponent inverse
+        c_inv = self.full ^ self.current
+        o_inv = c_inv ^ self.all
+
+        h = self.turn * (count_fours(o_inv) - count_fours(c_inv)) / self.full_fours
+
+        assert -1 < h < 1
+
+        return h
+
+    @bootstrap
+    def best_move(self, depth=0, alpha=-3, beta=3):
         """
         Calculate the best move of the current position
 
-        evaluation range: [-1, 1]
+        evaluation range: [-2, 2]
         0: draw, positive: first wins, negative: last wins
+        |eval| > 1: forced win exists
 
         Return: (move, evaluation)
         """
-        # TODO Add simple huristic function when reaching max depth
 
         if depth == self.max_depth:
-            return None, 0
+            yield None, self.heuristic()
 
         if depth == 0:
             self.cache = {}
 
         if (self.current, self.all) in self.cache:
-            return None, self.cache[(self.current, self.all)]
+            yield None, self.cache[(self.current, self.all)]
 
         sgn = self.turn
 
-        best_eval = -sgn * 2
+        best_eval = -sgn * 3
         best_move = None
-        candidates = []
 
         for i in range(7):
             m = self.move(i)
@@ -160,43 +240,37 @@ class ConnectFourBoard:
                 continue
 
             if self.finished:
-                result = self.winner / (depth + 1)
+                result = self.winner * (1 + 1 / (depth + 1))
                 self.undo(m)
                 self.cache[(self.current, self.all)] = result
-                return i, result
+                yield i, result
 
-            _, eval = self.best_move(depth + 1, alpha, beta)
+            _, eval = yield self.best_move(depth + 1, alpha, beta)
 
             # Alpha beta pruning
             # Don't cache eval when pruning nodes
             if sgn == 1:
                 if eval > beta:
                     self.undo(m)
-                    return i, eval
+                    yield i, eval
                 alpha = max(eval, alpha)
             else:
                 if eval < alpha:
                     self.undo(m)
-                    return i, eval
+                    yield i, eval
                 beta = min(eval, beta)
 
             if depth == 0:
-                print(i, eval)
-                if eval * sgn > best_eval * sgn:
-                    candidates = [i]
-                    best_eval = eval
-                elif eval == best_eval:
-                    candidates.append(i)
-            elif eval * sgn > best_eval * sgn:
+                log(i, eval)
+
+            if eval * sgn > best_eval * sgn:
                 best_eval = eval
+                best_move = i
 
             self.undo(m)
 
         self.cache[(self.current, self.all)] = best_eval
-        if depth == 0:
-            print(candidates)
-            return random.choice(candidates), best_eval
-        return best_move, best_eval
+        yield best_move, best_eval
 
     def check_win(self):
         # Return true if the current player has won
@@ -364,7 +438,7 @@ def gui():
             events = pygame.event.get()
             for event in events:
                 if event.type == pygame.QUIT:
-                    pygame.quit()
+                    quit()
                     return False
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.pos[0] < WINDOW_WIDTH / 2:
@@ -387,7 +461,7 @@ def gui():
             events = pygame.event.get()
             for event in events:
                 if event.type == pygame.QUIT:
-                    pygame.quit()
+                    quit()
                     return
                 elif event.type == pygame.MOUSEMOTION:
                     if players == 2 or player_turn == board.turn:
@@ -407,7 +481,9 @@ def gui():
 
             if players == 1 and player_turn != board.turn and not board.finished:
                 m, e = board.best_move()
+                log(time.time() - prev_time)
                 board.move(m)
+                # board.best_move()
 
             clock.tick(FPS)
 
