@@ -1,3 +1,4 @@
+import pickle
 import random
 import time
 
@@ -6,6 +7,13 @@ from types import GeneratorType
 import pygame
 
 pygame.init()
+
+book = {}
+try:
+    with open('book.pkl', 'rb') as f:
+        book = pickle.load(f)
+except:
+    pass
 
 CELL_SIZE = 100
 RADIUS = CELL_SIZE * 0.37
@@ -208,8 +216,15 @@ class ConnectFourBoard:
 
         return h
 
+    def best_move(self):
+        m = book.get((self.current, self.all), None)
+        if m is None:
+            return self.search()[0]
+        print(m)
+        return m
+
     @bootstrap
-    def best_move(self, depth=0, alpha=-3, beta=3):
+    def search(self, depth=0, alpha=-3, beta=3):
         """
         Calculate the best move of the current position
 
@@ -245,7 +260,7 @@ class ConnectFourBoard:
                 self.cache[(self.current, self.all)] = result
                 yield i, result
 
-            _, eval = yield self.best_move(depth + 1, alpha, beta)
+            _, eval = yield self.search(depth + 1, alpha, beta)
 
             # Alpha beta pruning
             # Don't cache eval when pruning nodes
@@ -372,7 +387,7 @@ def cli():
     if mode == '1':
         if turn == -1:
             print(board)
-            board.move(board.best_move()[0])
+            board.move(board.best_move())
         while True:
             print(board)
             move = -1
@@ -383,7 +398,7 @@ def cli():
                 print(board)
                 break
             print(board)
-            board.move(board.best_move()[0])
+            board.move(board.best_move())
             if board.finished:
                 print(board)
                 break
@@ -480,7 +495,7 @@ def gui():
             pygame.display.flip()
 
             if players == 1 and player_turn != board.turn and not board.finished:
-                m, e = board.best_move()
+                m = board.best_move()
                 log(time.time() - prev_time)
                 board.move(m)
                 # board.best_move()
