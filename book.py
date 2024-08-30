@@ -17,7 +17,7 @@ PROTOCOL = 5
 book = {(0, 0): 3}
 
 
-def gen_book(best_turn, max_depth=10):
+def gen_book(best_turn, max_depth=18):
     p = subprocess.Popen(
         ('./c4solver.exe', '-a'),
         stdin=subprocess.PIPE,
@@ -52,8 +52,10 @@ def gen_book(best_turn, max_depth=10):
         if len(moves) == max_depth:
             return
         if board.turn == best_turn:
-            best_move = best()
-            book[(board.current, board.all)] = best_move
+            best_move = book.get((board.current, board.all), None)
+            if best_move is None:
+                best_move = best()
+                book[(board.current, board.all)] = best_move
             moves.append(best_move)
             m = board.move(best_move)
             if not m:

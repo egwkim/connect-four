@@ -2,4 +2,4 @@
 __pycache__/
 c4solver.exe
 7x6.book
-book.pkl
+*.pkl
