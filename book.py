@@ -28,7 +28,7 @@ def gen_book(best_turn, max_depth=18):
     board = ConnectFourBoard(BOARD_WIDTH, BOARD_HEIGHT)
     moves = []
     if best_turn == 1:
-        book[(board.current, board.all)] = (3, 1)
+        book[(board.current, board.all)] = 3
         board.move(3)
         moves.append(3)
 
