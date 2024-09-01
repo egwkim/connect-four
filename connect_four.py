@@ -217,7 +217,7 @@ class ConnectFourBoard:
         m = book.get((self.current, self.all), None)
         if m is None:
             return self.search()[0]
-        print(m)
+        log(m)
         return m
 
     @bootstrap
