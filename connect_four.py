@@ -290,18 +290,12 @@ class ConnectFourBoard:
 
         # Check if there are two stones in a row
         # and then check if there are two "two in a row" in a row
-        x = c & (c >> 1)
-        h = x & (x >> 2)
-
-        x = c & (c >> self.width + 1)
-        v = x & (x << 2 * (self.width + 1))
-
-        x = c & (c >> self.width)
-        d1 = x & (x << 2 * (self.width))
-
-        x = c & c >> self.width + 2
-        d2 = x & (x << 2 * (self.width + 2))
-        return h or v or d1 or d2
+        return (
+            (x := c & (c >> 1)) & (x >> 2)
+            or (x := c & (c >> self.width + 1)) & (x >> 2 * (self.width + 1))
+            or (x := c & (c >> self.width)) & (x >> 2 * self.width)
+            or (x := c & (c >> self.width + 2)) & (x >> 2 * (self.width + 2))
+        )
 
     def __str__(self):
         s = ""
